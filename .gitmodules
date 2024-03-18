@@ -1,0 +1,3 @@
+[submodule "Video-LLaMA"]
+	path = Video-LLaMA
+	url = https://github.com/DAMO-NLP-SG/Video-LLaMA
