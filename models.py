@@ -1,10 +1,12 @@
 import sys
 sys.path.append('Video-LLaMA')
 
+import einops
 import torch
 import torch.nn as nn
 
 from video_llama.common.dist_utils import download_cached_file
+from video_llama.models.ImageBind.models.imagebind_model import ModalityType
 import video_llama.models as video_llama
 
 
@@ -67,8 +69,7 @@ def load_video_llama_modules(
         layer.output = None
         layer.intermediate = None
 
-    # load from pretrained (hard-coded to download from url here)
-    # ???
+    # load q-former from pretrained (hard-coded to download from url here)
     cached_file = download_cached_file(q_former_model, check_hash=False, progress=True)
     checkpoint = torch.load(cached_file, map_location="cpu")
     state_dict = checkpoint['model']
@@ -156,6 +157,8 @@ def load_video_llama_modules(
     return {
         'visual_encoder': visual_encoder,
         'ln_vision': ln_vision,
+        'Qformer': Qformer,
+        'query_tokens': query_tokens,
         'video_frame_position_embedding': video_frame_position_embedding,
         'video_Qformer': video_Qformer,
         'video_query_tokens': video_query_tokens,
@@ -164,3 +167,103 @@ def load_video_llama_modules(
         'audio_Qformer': audio_Qformer,
         'audio_query_tokens': audio_query_tokens,
     }
+
+
+class AudioRetrievalModel(nn.Module):
+
+    def __init__(self, video_llama_modules, device):
+        super().__init__()
+        # STORE MODULES
+
+    def forward_video(self, video):
+        '''
+        video: batch of videos, of shape (b, c, t, h, w)
+        return: learned video embedding, of shape ()
+        '''
+
+        device = video.device
+
+        batch_size, _, time_length, _, _ = video.size()
+        frames = einops.rearrange(video, 'b c t h w -> (b t) c h w')
+
+        # embed features with blip2
+        # query_output shape: ((b * t), q, h)
+        frame_embeds = self.ln_vision(self.visual_encoder(frames))
+        frame_atts = torch.ones(frame_embeds.size()[:-1], dtype=torch.long).to(device)
+
+        query_tokens = self.query_tokens.expand(frame_embeds.shape[0], -1, -1)
+        query_output = self.Qformer.bert(
+            query_embeds=query_tokens,
+            encoder_hidden_states=frame_embeds,
+            encoder_attention_mask=frame_atts,
+            return_dict=True,
+        )
+
+        # add positional embeddings
+        position_ids = torch.arange(time_length, dtype=torch.long, device=query_tokens.device)
+        position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
+        frame_position_embeddings = self.video_frame_position_embedding(position_ids)
+        q_hidden_state = query_output.last_hidden_state
+
+        frame_position_embeddings = frame_position_embeddings.unsqueeze(-2)
+        frame_hidden_state = einops.rearrange(q_hidden_state, '(b t) q h -> b t q h', b=batch_size, t=time_length)
+        frame_hidden_state = frame_position_embeddings + frame_hidden_state
+
+        # frame attention
+        frame_hidden_state =  einops.rearrange(frame_hidden_state, 'b t q h -> b (t q) h',b=batch_size,t=time_length)
+        frame_atts = torch.ones(frame_hidden_state.size()[:-1], dtype=torch.long).to(device)
+        video_query_tokens = self.video_query_tokens.expand(frame_hidden_state.shape[0], -1, -1)
+
+        video_query_output = self.video_Qformer.bert(
+            query_embeds=video_query_tokens,
+            encoder_hidden_states=frame_hidden_state,
+            encoder_attention_mask=frame_atts,
+            return_dict=True,
+            )
+        video_hidden = video_query_output.last_hidden_state
+
+        return video_hidden
+
+    def forward_audio(self, audio):
+        '''
+        audio: batch of groups of audio, list of b elements of shapes (n, ___)
+            where n is number of candidate audios per video
+        return: learned audio embeddings, of shape (b, ___)
+        '''
+
+        device = audio[0].device
+        audio_embeddings = []
+
+        for aud in audio:
+
+            audio_feature, audio_imagebind_finalout = self.audio_encoder.get_audio_feature(aud, modality_type=ModalityType.AUDIO)
+            batch_size, time_length = aud.size()[:2]
+
+            position_ids = torch.arange(time_length, dtype=torch.long, device=device)
+            position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
+
+            audio_position_embeddings = self.audio_position_embedding(position_ids)
+            audio_imagebind_finalout = audio_imagebind_finalout + audio_position_embeddings
+
+            audio_query_tokens = self.audio_query_tokens.expand(audio_imagebind_finalout.shape[0], -1, -1)
+            frame_atts = torch.ones(audio_imagebind_finalout.size()[:-1], dtype=torch.long).to(device)
+
+            audio_query_output = self.audio_Qformer.bert(
+                query_embeds=audio_query_tokens, #[32,768]
+                encoder_hidden_states=audio_imagebind_finalout,
+                encoder_attention_mask=frame_atts,
+                return_dict=True,
+                )
+            audio_hidden = audio_query_output.last_hidden_state
+
+            audio_embeddings.append(audio_hidden)
+
+        return torch.stack(audio_embeddings, dim=0)
+
+    def forward(self, x):
+        '''
+        x: 
+        '''
+        # encode video and all audios
+        # return each video embedding w/ corresponding audio candidate embeddings
+        return x
