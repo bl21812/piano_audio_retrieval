@@ -17,9 +17,11 @@ IMG_STD = (0.26862954, 0.26130258, 0.27577711)
 IMAGE_SIZE = 480
 
 
+# NOTE: this just returns a single video, audio pair
+    # intended for preprocessing
 class VideoAudioDataset(Dataset):
 
-    def __init__(self, dataset_csv, num_candidates=10, device='cuda:0'):
+    def __init__(self, dataset_csv, num_candidates=5, device='cuda:0'):
 
         self.device = device
         self.num_candidates = num_candidates
@@ -105,11 +107,27 @@ class VideoAudioDataset(Dataset):
         # shape = (c, t, h, w)
 
         # load audio tensor
-        audios = []
+        audio_path = self.clip_df.iloc[idx]['audio_path']
+        audio = load_and_transform_audio_data(
+            [audio_path], 
+            device='cpu',
+            num_mel_bins=128, 
+            target_length=204,
+            sample_rate=16000,
+            clip_duration=2,
+            clips_per_video=5,  # to use all audio in each 10 sec clip
+            mean=-4.268,
+            std=9.138,
+        )
+        audio = torch.squeeze(audio, 0).to(self.device)  # remove leading dim because only using 1 input
+        
+        return video, audio
+
+        '''audios = []
         candidate_indices = np.random.randint(low=0, high=len(self.clip_df)-1, size=(self.num_candidates-1)).tolist()
         candidate_indices = [idx] + candidate_indices
         for candidate_idx in candidate_indices:
-            audio_path = self.clip_df.iloc[idx]['audio_path']
+            audio_path = self.clip_df.iloc[candidate_idx]['audio_path']
             audio = load_and_transform_audio_data(
                 [audio_path], 
                 device='cpu',
@@ -126,9 +144,7 @@ class VideoAudioDataset(Dataset):
             audios.append(audio.to(self.device))
         audios = torch.stack(audios, dim=0)
 
-        return video, audios
+        return video, audios'''
 
     def __len__(self):
         return len(self.clip_df)
-
-    # NOTE: collation ??
