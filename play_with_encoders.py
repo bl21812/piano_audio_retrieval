@@ -5,28 +5,41 @@ import torch
 
 import video_llama.models as video_llama
 
-from models import load_video_llama_modules
+from models import load_video_llama_modules, AudioRetrievalModel
 from preprocessor import VideoAudioDataset
 
-# zoo = models.ModelZoo()
-# print(zoo)
 
+device = 'cuda:0'
+
+# video: (batch, channels, time, height, width)
+# audios: (batch, candidates, num_subclips, (1?), mel_bins, target_length)
+train_ds = VideoAudioDataset('data/train_ds.csv', device=device)
+train_loader = torch.utils.data.DataLoader(train_ds, batch_size=1, shuffle=True)
+
+# ----- MODEL -----
 modules = load_video_llama_modules()
+print(modules.keys())
 
-'''for module_name, module in modules.items():
-    print(module)
-    print(module_name)
-    input()'''
+model = AudioRetrievalModel(modules, device=device)
+print('model loaded')
 
-# audio preprocessing - take spectrograms of consecutive 2-sec audio clips
-    # as basically a time series of images
+# ----- TRAIN LOOP -----
+for i, (videos, audios) in enumerate(train_loader):
 
-train_ds = VideoAudioDataset('data/train_ds.csv')
-train_loader = torch.utils.data.DataLoader(train_ds, batch_size=16, shuffle=True)
-
-for i, (video, audios) in enumerate(train_loader):
     if i == 0:
-        print(video.size())
+
+        print(videos.size())
         print(audios.size())
+
+        video_out = model.forward_video(videos)
+        print(video_out.size())
+        print('video done')
+
+        '''for audio_candidates in audios:
+            audio = audio_encoder(aud)
+        print('audio done')'''
+
+        input()
+        
     else:
         break
