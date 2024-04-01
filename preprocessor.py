@@ -28,7 +28,6 @@ class VideoAudioDataset(Dataset):
 
         self.clip_df = pd.read_csv(dataset_csv)
         print(f'Loaded dataframe with {len(self.clip_df)} entries')
-        # self.clip_df = self.clip_df.sample(frac=1.0, replace=False, random_state=0)
 
         self.video_pipeline = transforms.Compose([
             ToTHWC(),

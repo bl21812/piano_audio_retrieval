@@ -323,15 +323,29 @@ def embed_audio(audio, modules, device='cuda:0'):
 
 def AudioRetrievalHead(nn.Module):
 
-    def __init__(self):
-        return
+    def __init__(self, input_dim=(32*8*5), num_hidden=2, hidden_dim=512, num_candidates=5, device='cuda:0'):
+
+        layers = []
+        in_dim = input_dim
+        out_dim = hidden_dim
+        for i in range(num_hidden):
+            if i > 0:
+                in_dim = hidden_dim
+            layers.append(nn.Linear(in_dim, out_dim, device=device))
+            layers.append(nn.ReLU())
+
+        # add output layer
+        out_dim = num_candidates
+        layers.append(nn.Linear(in_dim, out_dim, device=device))
+        
+        self.fc_layers = nn.Sequential(*layers)
 
     def forward(self, x):
         '''
         @param x: tuple of (clip, audio_candidates)
             clip: clip embedding, size (batch, video_query_tokens, hidden_dim)
-            audio_candidates: list of audio embeddings,
-                each of size (batch, audio_query_tokens, hidden_dim)
+            audio_candidates: audio embeddings,
+                of size (batch, candidates, audio_query_tokens, hidden_dim)
         '''
 
         clip, audio_candidates = x
