@@ -1,20 +1,34 @@
 # GET VIDEO_LLAMA EMBEDDINGS FOR CLIP FRAMES AND AUDIO
 
+import os
 import torch
-import tqdm
+from tqdm import tqdm
 import numpy as np
+import pandas as pd
 
 from models import load_video_llama_modules, embed_clip, embed_audio
 from preprocessor import VideoAudioDataset
 
 device = 'cuda:0'
 
-split = 'train'
+split = 'val'
+root_dir = 'data/'
+
+clip_embedding_dir = os.path.join(root_dir, 'embeddings', 'clips')
+if not os.path.exists(clip_embedding_dir):
+    os.makedirs(clip_embedding_dir)
+audio_embedding_dir = os.path.join(root_dir, 'embeddings', 'audio')
+if not os.path.exists(audio_embedding_dir):
+    os.makedirs(audio_embedding_dir)
 
 # video: (batch, channels, time, height, width)
 # audios: (batch, num_subclips, (1?), mel_bins, target_length)
 ds = VideoAudioDataset(f'data/{split}_ds.csv', device=device)
 loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=False)
+
+# need new dataframes since paths change as well
+clip_paths = []
+audio_paths = []
 
 # ----- MODEL -----
 modules = load_video_llama_modules()
@@ -25,10 +39,9 @@ print('model loaded')
 video_embeddings = []
 audio_embeddings = []
 
-video_embedding_file = f'{split}_clip_embeddings.npy'
-audio_embedding_file = f'{split}_audio_embeddings.npy'
+for i, (video, audio, filename) in enumerate(tqdm(loader)):
 
-for i, (video, audio) in enumerate(tqdm(loader)):
+    filename = filename[0]
 
     audio = audio.to('cpu')
 
@@ -43,12 +56,22 @@ for i, (video, audio) in enumerate(tqdm(loader)):
     audio_out = embed_audio(audio, modules)
     audio_out = np.squeeze(audio_out.to('cpu').numpy())
 
-    # NOTE: may have to switch to writing to file instead of appending based on memory !
-    video_embeddings.append(video_out.to('cpu'))
-    audio_embeddings.append(audio_out.to('cpu'))
+    print(video_out.shape)
+    print(audio_out.shape)
 
-video_embeddings = np.stack(video_embeddings)
-np.save(video_embedding_file, video_embeddings)
+    # write to npy file
+    video_out_path = os.path.join(clip_embedding_dir, f'{filename}.npy')
+    clip_paths.append(video_out_path)
+    print(video_out_path)
+    
+    audio_out_path = os.path.join(audio_embedding_dir, f'{filename}.npy')
+    audio_paths.append(audio_out_path)
+    print(audio_out_path)
 
-audio_embeddings = np.stack(audio_embeddings)
-np.save(audio_embedding_file, audio_embeddings)
+    np.save(video_out_path, video_out) # args: file, array
+    np.save(audio_out_path, audio_out)
+
+# write clip and audio paths to df
+clip_df_path = os.path.join(root_dir, f'{split}_embeddings.csv')
+clip_df = pd.DataFrame({'clip': clip_paths, 'audio': audio_paths})
+clip_df.to_csv(clip_df_path, index=False)

@@ -321,7 +321,7 @@ def embed_audio(audio, modules, device='cuda:0'):
     return audio_hidden
 
 
-def AudioRetrievalHead(nn.Module):
+class AudioRetrievalHead(nn.Module):
 
     def __init__(self, input_dim=(32*8*5), num_hidden=2, hidden_dim=512, num_candidates=5, device='cuda:0'):
 

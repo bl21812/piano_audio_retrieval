@@ -119,8 +119,10 @@ class VideoAudioDataset(Dataset):
             std=9.138,
         )
         audio = torch.squeeze(audio, 0).to(self.device)  # remove leading dim because only using 1 input
+
+        filename = ((self.clip_df.iloc[idx]['clip_path'].split('/'))[-1]).split('.')[0]
         
-        return video, audio
+        return video, audio, filename
 
         '''audios = []
         candidate_indices = np.random.randint(low=0, high=len(self.clip_df)-1, size=(self.num_candidates-1)).tolist()
@@ -147,3 +149,6 @@ class VideoAudioDataset(Dataset):
 
     def __len__(self):
         return len(self.clip_df)
+
+    def get_filename(self, idx):
+        return self.clip_df.iloc[idx]
