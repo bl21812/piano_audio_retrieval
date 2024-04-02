@@ -56,19 +56,14 @@ for i, (video, audio, filename) in enumerate(tqdm(loader)):
     audio_out = embed_audio(audio, modules)
     audio_out = np.squeeze(audio_out.to('cpu').numpy())
 
-    print(video_out.shape)
-    print(audio_out.shape)
-
     # write to npy file
     video_out_path = os.path.join(clip_embedding_dir, f'{filename}.npy')
     clip_paths.append(video_out_path)
-    print(video_out_path)
     
     audio_out_path = os.path.join(audio_embedding_dir, f'{filename}.npy')
     audio_paths.append(audio_out_path)
-    print(audio_out_path)
 
-    np.save(video_out_path, video_out) # args: file, array
+    np.save(video_out_path, video_out)
     np.save(audio_out_path, audio_out)
 
 # write clip and audio paths to df
