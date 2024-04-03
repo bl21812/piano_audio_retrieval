@@ -11,7 +11,7 @@ from preprocessor import VideoAudioDataset
 
 device = 'cuda:0'
 
-split = 'val'
+split = 'train'
 root_dir = 'data/'
 
 clip_embedding_dir = os.path.join(root_dir, 'embeddings', 'clips')

@@ -1,4 +1,5 @@
 data/*
+runs/*
 .*
 Video-LLaMA/*
 *.pth

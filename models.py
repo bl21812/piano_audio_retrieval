@@ -323,9 +323,31 @@ def embed_audio(audio, modules, device='cuda:0'):
 
 class AudioRetrievalHead(nn.Module):
 
-    def __init__(self, input_dim=(32*8*5), num_hidden=2, hidden_dim=512, num_candidates=5, device='cuda:0'):
+    def __init__(
+        self, 
+        attention_dim=768,
+        attention_heads=8,
+        input_dim=(32*768), 
+        num_hidden=2, 
+        hidden_dim=64, 
+        num_candidates=5, 
+        device='cuda:0'
+    ):
 
-        layers = []
+        assert num_hidden > 1, 'Does not currently support no hidden layers!'
+
+        super().__init__()
+
+        # attention layer
+        # outputs (32, 768) tensor 
+        self.attention = nn.MultiheadAttention(
+            attention_dim, 
+            attention_heads, 
+            batch_first=True
+        ).to(device)
+
+        # FC layers
+        '''layers = []
         in_dim = input_dim
         out_dim = hidden_dim
         for i in range(num_hidden):
@@ -333,15 +355,27 @@ class AudioRetrievalHead(nn.Module):
                 in_dim = hidden_dim
             layers.append(nn.Linear(in_dim, out_dim, device=device))
             layers.append(nn.ReLU())
+        self.fc_layers = nn.Sequential(*layers).to(device)'''
+        layers = []
+        for i in range(num_hidden):
+            layers.append(nn.MultiheadAttention(
+                attention_dim, 
+                attention_heads,
+                batch_first=True
+            ).to(device))
+        self.self_attention = layers
 
-        # add output layer
+        # output layer
+        # in_dim = in_dim * num_candidates
+        in_dim = attention_dim * 32 * num_candidates
         out_dim = num_candidates
-        layers.append(nn.Linear(in_dim, out_dim, device=device))
-        
-        self.fc_layers = nn.Sequential(*layers)
+        self.output_layer = nn.Linear(in_dim, out_dim, device=device)
 
     def forward(self, x):
         '''
+        For each video-audio pair, applies MHA and FC layers (shared params)
+            and intermediate tensors are concatenated for final output layer
+
         @param x: tuple of (clip, audio_candidates)
             clip: clip embedding, size (batch, video_query_tokens, hidden_dim)
             audio_candidates: audio embeddings,
@@ -349,8 +383,42 @@ class AudioRetrievalHead(nn.Module):
         '''
 
         clip, audio_candidates = x
+
+        # change shape to (num_candidates, batch, ...)
+        audio_candidates = torch.transpose(audio_candidates, 0, 1)  
+
+        # apply MHA and FC layers
+        fc_outs = []
+        for audio_candidate in audio_candidates:
+
+            att_out = self.attention(
+                query=clip,
+                key=audio_candidate,
+                value=audio_candidate,
+                need_weights=False
+            )[0]
+            # NOTE: consider averaging over each seq_len dim (remove the 32 dim) instead?
+
+            for att_layer in self.self_attention:
+                att_out = att_layer(
+                    query=att_out,
+                    key=att_out,
+                    value=att_out,
+                    need_weights=False
+                )[0]
+
+            att_out = torch.flatten(att_out, start_dim=1)  # keep batch dim
+
+            fc_outs.append(att_out)
+
+            # fc_out = self.fc_layers(att_out)
+            # fc_outs.append(fc_out)
+
+        # concat and output
+        fc_cat = torch.cat(fc_outs, dim=1)
+        outs = self.output_layer(fc_cat)
         
-        return
+        return outs
 
 
 # ----- NOT USING -----
