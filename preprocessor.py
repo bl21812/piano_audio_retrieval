@@ -27,6 +27,7 @@ class EmbeddingDataset(Dataset):
         self.df = pd.read_csv(embedding_file)
         self.device = device
         self.num_candidates = num_candidates
+        self.current_batch_audios = None
 
     def __getitem__(self, idx):
         '''
@@ -69,6 +70,12 @@ class EmbeddingDataset(Dataset):
         # label = np.zeros(self.num_candidates)
         # label[gt_idx] = 1.0
 
+        # for demo purposes
+        candidate_fnames = []
+        for audio_idx in audio_idxs:
+            candidate_fnames.append(((self.df.iloc[audio_idx]['audio'].split('/'))[-1]).split('.')[0])
+        self.current_batch_audios = candidate_fnames
+
         return video, torch.stack(audios), gt_idx
 
     def __len__(self):
@@ -79,10 +86,11 @@ class EmbeddingDataset(Dataset):
     # intended for preprocessing
 class VideoAudioDataset(Dataset):
 
-    def __init__(self, dataset_csv, num_candidates=5, device='cuda:0'):
+    def __init__(self, dataset_csv, num_candidates=5, device='cuda:0', img_dim=224):
 
         self.device = device
         self.num_candidates = num_candidates
+        self.img_dim = img_dim
 
         self.clip_df = pd.read_csv(dataset_csv)
         print(f'Loaded dataframe with {len(self.clip_df)} entries')
@@ -105,8 +113,8 @@ class VideoAudioDataset(Dataset):
         video = load_video(
             clip_path,
             n_frms=1000000,
-            height=224,
-            width=224,
+            height=self.img_dim,
+            width=self.img_dim,
             sampling='uniform',
             return_msg=False  # True to display number of frames and sampling interval
         )

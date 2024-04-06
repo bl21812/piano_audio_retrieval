@@ -14,7 +14,8 @@ import video_llama.models as video_llama
 def disabled_train(self, mode=True):
     return self
 
-
+# TODO: im not loading their pretrained weights am I? (aren't these just the base ones)
+# and vid and audio q former may be randomly initialized rn ??
 def load_video_llama_modules(
     vit_model="eva_clip_g",
     q_former_model="https://storage.googleapis.com/sfr-vision-language-research/LAVIS/models/BLIP2/blip2_pretrained_flant5xxl.pth",
@@ -27,14 +28,11 @@ def load_video_llama_modules(
     frozen_video_Qformer=True,
     frozen_audio_Qformer=True,
     num_query_token=32,
-    max_frame_pos= 300,
+    max_frame_pos=300,
     num_video_query_token = 32,
     num_audio_query_token = 8,
     imagebind_ckpt_path="imagebind_huge.pth",
 ):
-
-    # load tokenizer?
-    # what is low resource?
 
     # ----- LOAD VIT (img encoder) -----
     # ln = layer norm
